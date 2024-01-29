@@ -190,7 +190,7 @@ static void uart_task(void *pvParameters)
     BaseType_t retry_flag = pdFALSE;
     int pattern_pos = -1;
     uint8_t *data = NULL;
-
+    // uint32_t runs = 0;
     for (;;) {
         //Waiting for UART event.
         if (xQueueReceive(esp_at_uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
@@ -206,6 +206,7 @@ retry:
                     if (event.type == UART_DATA) {
                         data_len += event.size;
                     } else if (event.type == UART_BUFFER_FULL) {
+                        // printf("UART buffer is full\n");
                         esp_at_port_recv_data_notify(data_len, portMAX_DELAY);
                         data_len = event.size;
                         break;
@@ -214,6 +215,9 @@ retry:
                         break;
                     }
                 }
+                // if(++runs % 100 == 0) {
+                //     printf("At port data length:%u\n", at_port_get_data_length());
+                // }
                 esp_at_port_recv_data_notify(data_len, portMAX_DELAY);
                 data_len = 0;
 
@@ -244,7 +248,9 @@ retry:
                         break;
                     }
                 }
-                esp_at_port_recv_data_notify(at_port_get_data_length(), portMAX_DELAY);
+                int32_t temp = at_port_get_data_length();
+                // printf("UART overflow: %d\n", temp);
+                esp_at_port_recv_data_notify(temp, portMAX_DELAY);
                 data_len = 0;
                 if (retry_flag == pdTRUE) {
                     goto retry;
@@ -393,7 +399,8 @@ static void at_uart_init(void)
     // set uart pins (-1: default pin)
     uart_set_pin(esp_at_uart_port, tx_pin, rx_pin, rts_pin, cts_pin);
     // install uart driver
-    uart_driver_install(esp_at_uart_port, 2048, 8192, 30, &esp_at_uart_queue, 0);
+    uart_driver_install(esp_at_uart_port, 1024 * 2, 1024 * 8, 30, &esp_at_uart_queue, 0);
+    uart_set_sw_flow_ctrl(esp_at_uart_port, true, 100, 100);
     uart_intr_config(esp_at_uart_port, &intr_config);
 
     /**
@@ -409,7 +416,7 @@ static void at_uart_init(void)
     s_at_uart_port_pin.rts = rts_pin;
 
     printf("AT cmd port:uart%d tx:%d rx:%d cts:%d rts:%d baudrate:%d\r\n", esp_at_uart_port, tx_pin, rx_pin, cts_pin, rts_pin, uart_config.baud_rate);
-    xTaskCreate(uart_task, "uTask", 1024, (void *)esp_at_uart_port, 1, NULL);
+    xTaskCreate(uart_task, "uTask", 2048, (void *)esp_at_uart_port, 1, NULL);
 }
 
 static bool at_nvm_uart_config_set(at_nvm_uart_config_struct *uart_config)
